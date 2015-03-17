@@ -9,4 +9,4 @@ directly.
 Changes from upstream:
 
 *   The function SetOption allows for setting arbitrary mount options (see
-    bazillion/fuse#77).
+    see [issue 77](https://github.com/bazillion/fuse/issues/77)).
