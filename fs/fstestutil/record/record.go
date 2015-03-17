@@ -1,11 +1,11 @@
-package record // import "bazil.org/fuse/fs/fstestutil/record"
+package record // import "github.com/jacobsa/bazilfuse/fs/fstestutil/record"
 
 import (
 	"sync"
 	"sync/atomic"
 
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
+	"github.com/jacobsa/bazilfuse"
+	"github.com/jacobsa/bazilfuse/fs"
 	"golang.org/x/net/context"
 )
 
