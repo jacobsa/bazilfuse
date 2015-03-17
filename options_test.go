@@ -1,10 +1,9 @@
-package fuse_test
+package bazilfuse_test
 
 import (
 	"runtime"
 	"testing"
 
-	"github.com/jacobsa/bazilfuse"
 	"github.com/jacobsa/bazilfuse/fs/fstestutil"
 )
 
