@@ -5,3 +5,8 @@ directly.
 
 [fuse]: https://github.com/jacobsa/fuse
 [upstream]: https://github.com/bazillion/fuse
+
+Changes from upstream:
+
+*   The function SetOption allows for setting arbitrary mount options (see
+    bazillion/fuse#77).
