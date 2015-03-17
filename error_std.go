@@ -1,4 +1,4 @@
-package fuse
+package bazilfuse
 
 // There is very little commonality in extended attribute errors
 // across platforms.

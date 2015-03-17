@@ -1,4 +1,4 @@
-package fuse
+package bazilfuse
 
 func localVolume(conf *MountConfig) error {
 	return nil

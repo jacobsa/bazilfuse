@@ -1,1 +1,1 @@
-package fuse
+package bazilfuse
