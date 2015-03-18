@@ -108,6 +108,21 @@ func AllowRoot() MountOption {
 	}
 }
 
+// DefaultPermissions makes the kernel enforce access control based on
+// the file mode (as in chmod).
+//
+// Without this option, the Node itself decides what is and is not
+// allowed. This is normally ok because FUSE file systems cannot be
+// accessed by other users without AllowOther/AllowRoot.
+//
+// FreeBSD ignores this option.
+func DefaultPermissions() MountOption {
+	return func(conf *MountConfig) error {
+		conf.options["default_permissions"] = ""
+		return nil
+	}
+}
+
 // Set the supplied arbitrary (key, value) pair in the "-o" argument to the
 // fuse mount binary, overriding any previous setting for the key. If value is
 // empty, the '=' will be omitted from the argument.
