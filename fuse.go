@@ -47,11 +47,17 @@
 //
 //	Op(ctx context.Context, req *OpRequest, resp *OpResponse) Error
 //
-// where Op is the name of a FUSE operation.  Op reads request parameters
-// from req and writes results to resp.  An operation whose only result is
-// the error result omits the resp parameter.  Multiple goroutines may call
-// service methods simultaneously; the methods being called are responsible
-// for appropriate synchronization.
+// where Op is the name of a FUSE operation. Op reads request
+// parameters from req and writes results to resp. An operation whose
+// only result is the error result omits the resp parameter.
+//
+// Multiple goroutines may call service methods simultaneously; the
+// methods being called are responsible for appropriate
+// synchronization.
+//
+// The operation must not hold on to the request or response,
+// including any []byte fields such as WriteRequest.Data or
+// SetxattrRequest.Xattr.
 //
 // Errors
 //
@@ -79,9 +85,12 @@
 //
 // Authentication
 //
-// All requests types embed a Header, meaning that the method can inspect
-// req.Pid, req.Uid, and req.Gid as necessary to implement permission checking.
-// Alternately, XXX.
+// All requests types embed a Header, meaning that the method can
+// inspect req.Pid, req.Uid, and req.Gid as necessary to implement
+// permission checking. The kernel FUSE layer normally prevents other
+// users from accessing the FUSE file system (to change this, see
+// AllowOther, AllowRoot), but does not enforce access modes (to
+// change this, see DefaultPermissions).
 //
 // Mount Options
 //
@@ -89,8 +98,6 @@
 // passing MountOption values to Mount.
 //
 package bazilfuse // import "github.com/jacobsa/bazilfuse"
-
-// BUG(rsc): The mount code for FreeBSD has not been written yet.
 
 import (
 	"bytes"
