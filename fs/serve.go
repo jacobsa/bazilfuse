@@ -55,9 +55,6 @@ type FSDestroyer interface {
 	// Linux only sends this request for block device backed (fuseblk)
 	// filesystems, to allow them to flush writes to disk before the
 	// unmount completes.
-	//
-	// On normal FUSE filesystems, use Forget of the root Node to
-	// do actions at unmount time.
 	Destroy()
 }
 
@@ -87,7 +84,7 @@ type FSInodeGenerator interface {
 // Other FUSE requests can be handled by implementing methods from the
 // Node* interfaces, for example NodeOpener.
 type Node interface {
-	Attr() fuse.Attr
+	Attr(*fuse.Attr)
 }
 
 type NodeGetattrer interface {
@@ -192,6 +189,11 @@ type NodeCreater interface {
 }
 
 type NodeForgetter interface {
+	// Forget about this node. This node will not receive further
+	// method calls.
+	//
+	// Forget is not necessarily seen on unmount, as all nodes are
+	// implicitly forgotten as part part of the unmount.
 	Forget()
 }
 
@@ -237,22 +239,12 @@ type NodeRemovexattrer interface {
 var startTime = time.Now()
 
 func nodeAttr(n Node) (attr fuse.Attr) {
-	attr = n.Attr()
-	if attr.Nlink == 0 {
-		attr.Nlink = 1
-	}
-	if attr.Atime.IsZero() {
-		attr.Atime = startTime
-	}
-	if attr.Mtime.IsZero() {
-		attr.Mtime = startTime
-	}
-	if attr.Ctime.IsZero() {
-		attr.Ctime = startTime
-	}
-	if attr.Crtime.IsZero() {
-		attr.Crtime = startTime
-	}
+	attr.Nlink = 1
+	attr.Atime = startTime
+	attr.Mtime = startTime
+	attr.Ctime = startTime
+	attr.Crtime = startTime
+	n.Attr(&attr)
 	return
 }
 
