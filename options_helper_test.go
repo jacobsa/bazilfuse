@@ -1,6 +1,6 @@
 package bazilfuse
 
 // for TestMountOptionCommaError
-func ForTestSetMountOption(conf *MountConfig, k, v string) {
+func ForTestSetMountOption(conf *mountConfig, k, v string) {
 	conf.options[k] = v
 }
