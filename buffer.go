@@ -1,4 +1,4 @@
-package fuse
+package bazilfuse
 
 import "unsafe"
 
