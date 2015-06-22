@@ -131,7 +131,7 @@ func DefaultPermissions() MountOption {
 // fuse mount binary, overriding any previous setting for the key. If value is
 // empty, the '=' will be omitted from the argument.
 func SetOption(key, value string) MountOption {
-	return func(conf *MountConfig) error {
+	return func(conf *mountConfig) error {
 		conf.options[key] = value
 		return nil
 	}
