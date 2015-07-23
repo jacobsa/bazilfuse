@@ -7,11 +7,8 @@ import (
 	pathpkg "path"
 	"strings"
 
+	fuse "github.com/jacobsa/bazilfuse"
 	"golang.org/x/net/context"
-)
-
-import (
-	"github.com/jacobsa/bazilfuse"
 )
 
 // A Tree implements a basic read-only directory tree for FUSE.

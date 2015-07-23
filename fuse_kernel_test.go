@@ -3,6 +3,8 @@ package bazilfuse_test
 import (
 	"os"
 	"testing"
+
+	fuse "github.com/jacobsa/bazilfuse"
 )
 
 func TestOpenFlagsAccmodeMask(t *testing.T) {

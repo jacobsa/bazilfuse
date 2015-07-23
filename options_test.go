@@ -6,9 +6,9 @@ import (
 	"syscall"
 	"testing"
 
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
-	"bazil.org/fuse/fs/fstestutil"
+	fuse "github.com/jacobsa/bazilfuse"
+	"github.com/jacobsa/bazilfuse/fs"
+	"github.com/jacobsa/bazilfuse/fs/fstestutil"
 	"golang.org/x/net/context"
 )
 

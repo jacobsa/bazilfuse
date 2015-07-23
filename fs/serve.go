@@ -15,12 +15,10 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/context"
-)
-
-import (
-	"github.com/jacobsa/bazilfuse"
+	fuse "github.com/jacobsa/bazilfuse"
 	"github.com/jacobsa/bazilfuse/fuseutil"
+
+	"golang.org/x/net/context"
 )
 
 const (

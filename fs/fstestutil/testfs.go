@@ -3,6 +3,7 @@ package fstestutil
 import (
 	"os"
 
+	fuse "github.com/jacobsa/bazilfuse"
 	"github.com/jacobsa/bazilfuse/fs"
 	"golang.org/x/net/context"
 )
