@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"testing"
 
+	fuse "github.com/jacobsa/bazilfuse"
 	"github.com/jacobsa/bazilfuse/fs/fstestutil"
 )
 

@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jacobsa/bazilfuse"
+	fuse "github.com/jacobsa/bazilfuse"
 	"github.com/jacobsa/bazilfuse/fs"
 	"github.com/jacobsa/bazilfuse/fs/fstestutil"
 	"github.com/jacobsa/bazilfuse/fs/fstestutil/record"

@@ -7,7 +7,7 @@ import (
 	"path"
 	"testing"
 
-	"github.com/jacobsa/bazilfuse"
+	fuse "github.com/jacobsa/bazilfuse"
 	"github.com/jacobsa/bazilfuse/fs"
 	"github.com/jacobsa/bazilfuse/fs/fstestutil"
 	"golang.org/x/net/context"
