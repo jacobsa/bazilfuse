@@ -4,7 +4,6 @@ package fs // import "github.com/jacobsa/bazilfuse/fs"
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -75,8 +74,17 @@ type FSInodeGenerator interface {
 // See the documentation for type FS for general information
 // pertaining to all methods.
 //
+// A Node must be usable as a map key, that is, it cannot be a
+// function, map or slice.
+//
 // Other FUSE requests can be handled by implementing methods from the
 // Node* interfaces, for example NodeOpener.
+//
+// Methods returning Node should take care to return the same Node
+// when the result is logically the same instance. Without this, each
+// Node will get a new NodeID, causing spurious cache invalidations,
+// extra lookups and aliasing anomalies. This may not matter for a
+// simple, read-only filesystem.
 type Node interface {
 	// Attr fills attr with the standard metadata for the node.
 	Attr(ctx context.Context, attr *fuse.Attr) error
@@ -311,6 +319,12 @@ type Config struct {
 	//
 	// See fuse.Debug for the rules that log functions must follow.
 	Debug func(msg interface{})
+
+	// Function to create new contexts. If nil, use
+	// context.Background.
+	//
+	// Note that changing this may not affect existing calls to Serve.
+	GetContext func() context.Context
 }
 
 // New returns a new FUSE server ready to serve this kernel FUSE
@@ -321,21 +335,27 @@ func New(conn *fuse.Conn, config *Config) *Server {
 	s := &Server{
 		conn:         conn,
 		req:          map[fuse.RequestID]*serveRequest{},
+		nodeRef:      map[Node]fuse.NodeID{},
 		dynamicInode: GenerateDynamicInode,
 	}
 	if config != nil {
 		s.debug = config.Debug
+		s.context = config.GetContext
 	}
 	if s.debug == nil {
 		s.debug = fuse.Debug
+	}
+	if s.context == nil {
+		s.context = context.Background
 	}
 	return s
 }
 
 type Server struct {
 	// set in New
-	conn  *fuse.Conn
-	debug func(msg interface{})
+	conn    *fuse.Conn
+	debug   func(msg interface{})
+	context func() context.Context
 
 	// set once at Serve time
 	fs           FS
@@ -345,6 +365,7 @@ type Server struct {
 	meta       sync.Mutex
 	req        map[fuse.RequestID]*serveRequest
 	node       []*serveNode
+	nodeRef    map[Node]fuse.NodeID
 	handle     []*serveHandle
 	freeNode   []fuse.NodeID
 	freeHandle []fuse.HandleID
@@ -369,14 +390,15 @@ func (s *Server) Serve(fs FS) error {
 	if err != nil {
 		return fmt.Errorf("cannot obtain root node: %v", err)
 	}
-	if nodeRef, ok := root.(nodeRef); ok {
-		// Recognize the root node if it's ever returned from Lookup,
-		// passed to Invalidate, etc.
-		ref := nodeRef.nodeRef()
-		ref.id = 1
-		ref.generation = s.nodeGen
-	}
-	s.node = append(s.node, nil, &serveNode{inode: 1, node: root, refs: 1})
+	// Recognize the root node if it's ever returned from Lookup,
+	// passed to Invalidate, etc.
+	s.nodeRef[root] = 1
+	s.node = append(s.node, nil, &serveNode{
+		inode:      1,
+		generation: s.nodeGen,
+		node:       root,
+		refs:       1,
+	})
 	s.handle = append(s.handle, nil)
 
 	for {
@@ -412,9 +434,20 @@ type serveRequest struct {
 }
 
 type serveNode struct {
-	inode uint64
-	node  Node
-	refs  uint64
+	inode      uint64
+	generation uint64
+	node       Node
+	refs       uint64
+
+	// Delay freeing the NodeID until waitgroup is done. This allows
+	// using the NodeID for short periods of time without holding the
+	// Server.meta lock.
+	//
+	// Rules:
+	//
+	//     - hold Server.meta while calling wg.Add, then unlock
+	//     - do NOT try to reacquire Server.meta
+	wg sync.WaitGroup
 }
 
 func (sn *serveNode) attr(ctx context.Context, attr *fuse.Attr) error {
@@ -431,52 +464,20 @@ type serveHandle struct {
 	nodeID   fuse.NodeID
 }
 
-// NodeRef can be embedded in a Node to recognize the same Node being
-// returned from multiple Lookup, Create etc calls.
-//
-// Without this, each Node will get a new NodeID, causing spurious
-// cache invalidations, extra lookups and aliasing anomalies. This may
-// not matter for a simple, read-only filesystem.
-type NodeRef struct {
-	id         fuse.NodeID
-	generation uint64
-
-	// Delay freeing the NodeID until waitgroup is done. This allows
-	// using the NodeID for short periods of time without holding the
-	// Server.meta lock.
-	//
-	// Rules:
-	//
-	//     - hold Server.meta while calling wg.Add, then unlock
-	//     - do NOT try to reacquire Server.meta
-	wg sync.WaitGroup
-}
-
-// nodeRef is only ever accessed while holding Server.meta
-func (n *NodeRef) nodeRef() *NodeRef {
-	return n
-}
-
-type nodeRef interface {
-	nodeRef() *NodeRef
-}
+// NodeRef is deprecated. It remains here to decrease code churn on
+// FUSE library users. You may remove it from your program now;
+// returning the same Node values are now recognized automatically,
+// without needing NodeRef.
+type NodeRef struct{}
 
 func (c *Server) saveNode(inode uint64, node Node) (id fuse.NodeID, gen uint64) {
 	c.meta.Lock()
 	defer c.meta.Unlock()
 
-	var ref *NodeRef
-	if nodeRef, ok := node.(nodeRef); ok {
-		ref = nodeRef.nodeRef()
-
-		if ref.id != 0 {
-			// dropNode guarantees that NodeRef is zeroed at the same
-			// time as the NodeID is removed from Server.node, as
-			// guarded by c.meta; this means sn cannot be nil here
-			sn := c.node[ref.id]
-			sn.refs++
-			return ref.id, ref.generation
-		}
+	if id, ok := c.nodeRef[node]; ok {
+		sn := c.node[id]
+		sn.refs++
+		return id, sn.generation
 	}
 
 	sn := &serveNode{inode: inode, node: node, refs: 1}
@@ -489,11 +490,8 @@ func (c *Server) saveNode(inode uint64, node Node) (id fuse.NodeID, gen uint64) 
 		id = fuse.NodeID(len(c.node))
 		c.node = append(c.node, sn)
 	}
-	gen = c.nodeGen
-	if ref != nil {
-		ref.id = id
-		ref.generation = gen
-	}
+	sn.generation = c.nodeGen
+	c.nodeRef[node] = id
 	return
 }
 
@@ -545,13 +543,9 @@ func (c *Server) dropNode(id fuse.NodeID, n uint64) (forget bool) {
 
 	snode.refs -= n
 	if snode.refs == 0 {
+		snode.wg.Wait()
 		c.node[id] = nil
-		if nodeRef, ok := snode.node.(nodeRef); ok {
-			ref := nodeRef.nodeRef()
-			ref.wg.Wait()
-			ref.id = 0
-			ref.generation = 0
-		}
+		delete(c.nodeRef, snode.node)
 		c.freeNode = append(c.freeNode, id)
 		return true
 	}
@@ -652,7 +646,7 @@ type notification struct {
 	Op   string
 	Node fuse.NodeID
 	Out  interface{} `json:",omitempty"`
-	Err  error       `json:",omitempty"`
+	Err  string      `json:",omitempty"`
 }
 
 func (n notification) String() string {
@@ -726,7 +720,7 @@ func initLookupResponse(s *fuse.LookupResponse) {
 }
 
 func (c *Server) serve(r fuse.Request) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(c.context())
 	defer cancel()
 
 	req := &serveRequest{Request: r, cancel: cancel}
@@ -1424,20 +1418,23 @@ func (i invalidateNodeDetail) String() string {
 	return fmt.Sprintf("Off:%d Size:%d", i.Off, i.Size)
 }
 
-func (s *Server) invalidateNode(node Node, off int64, size int64) error {
-	nodeRef, ok := node.(nodeRef)
-	if !ok {
-		return errors.New("for invalidation, node must embed NodeRef")
+func errstr(err error) string {
+	if err == nil {
+		return ""
 	}
-	ref := nodeRef.nodeRef()
+	return err.Error()
+}
 
+func (s *Server) invalidateNode(node Node, off int64, size int64) error {
 	s.meta.Lock()
-	ref.wg.Add(1)
-	id := ref.id
+	id, ok := s.nodeRef[node]
+	if ok {
+		snode := s.node[id]
+		snode.wg.Add(1)
+		defer snode.wg.Done()
+	}
 	s.meta.Unlock()
-	defer ref.wg.Done()
-
-	if id == 0 {
+	if !ok {
 		// This is what the kernel would have said, if we had been
 		// able to send this message; it's not cached.
 		return fuse.ErrNotCached
@@ -1453,7 +1450,7 @@ func (s *Server) invalidateNode(node Node, off int64, size int64) error {
 			Off:  off,
 			Size: size,
 		},
-		Err: err,
+		Err: errstr(err),
 	})
 	return err
 }
@@ -1504,19 +1501,15 @@ func (i invalidateEntryDetail) String() string {
 // Returns ErrNotCached if the kernel is not currently caching the
 // node.
 func (s *Server) InvalidateEntry(parent Node, name string) error {
-	nodeRef, ok := parent.(nodeRef)
-	if !ok {
-		return errors.New("for invalidation, node must embed NodeRef")
-	}
-	ref := nodeRef.nodeRef()
-
 	s.meta.Lock()
-	ref.wg.Add(1)
-	id := ref.id
+	id, ok := s.nodeRef[parent]
+	if ok {
+		snode := s.node[id]
+		snode.wg.Add(1)
+		defer snode.wg.Done()
+	}
 	s.meta.Unlock()
-	defer ref.wg.Done()
-
-	if id == 0 {
+	if !ok {
 		// This is what the kernel would have said, if we had been
 		// able to send this message; it's not cached.
 		return fuse.ErrNotCached
@@ -1528,7 +1521,7 @@ func (s *Server) InvalidateEntry(parent Node, name string) error {
 		Out: invalidateEntryDetail{
 			Name: name,
 		},
-		Err: err,
+		Err: errstr(err),
 	})
 	return err
 }
